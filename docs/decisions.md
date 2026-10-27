@@ -41,3 +41,56 @@ optional. We can use it later for a small status page or a Salesforce-facing API
 - **Logs:** the message text is hidden by default, because it holds customer personal data.
 - **Messages in scope:** only new messages (`notify`). Status updates, broadcasts,
   newsletters, reactions and system messages are ignored.
+
+## 2026-10-27: Store messages as Tasks, one for each customer and day
+
+**Options:**
+
+1. A custom object, `WhatsApp_Message__c`, with one record for each message.
+2. A Task, with one record for each customer and day.
+
+**Decision:** Use a Task (option 2). This is the business preference.
+
+**Details:**
+
+- The Task `Description` holds the transcript of the day, in both directions.
+- A new unique External ID field, `WhatsApp_Sync_Key__c`, holds the phone number and the day.
+  The sync uses it to update the Task if it already exists, not make a second one.
+- A Task that links to a Lead cannot link to an Opportunity. This is a Salesforce rule.
+
+**Trade-offs that we accept:**
+
+- Reports cannot count single messages, only days with messages.
+- `Description` holds a maximum of 32,000 characters. A very long day gets cut, with a note.
+
+## 2026-10-27: Link each Task to an Opportunity
+
+**Rule:**
+
+1. Use the open Opportunity for the customer.
+2. If there is none, use the most recent closed Opportunity.
+3. If there is none, link only to the person.
+
+**Later:** we can add rules for Closed Lost Opportunities.
+
+## 2026-10-27: Sync once a day, not in real time
+
+**Decision:** A daily job writes the messages of the day to Salesforce.
+
+**Result:** The Baileys worker still runs all the time, because WhatsApp sends
+messages to a linked device only while it is connected. The worker saves each
+message in a local database. The daily job reads the database.
+
+**Benefits:**
+
+- If Salesforce is not available, the messages stay in the database for the next run.
+- The schedule can change later, for example to each hour, without a new design.
+
+## 2026-10-27: No new Leads. Retry unmatched numbers for 7 days
+
+**Decision:** The sync never makes a Lead. If a phone number has no match, the
+sync tries again on each daily run. After 7 days, it stops and deletes those messages.
+
+**Reason for the delete:** messages are personal data. We keep them only as long as we need them.
+
+This replaces "make a new Lead if there is no match" from the first plan.

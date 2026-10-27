@@ -8,11 +8,53 @@ Status: Phase 1. The worker connects to WhatsApp and logs new messages. It does 
 
 ## How it works
 
-1. A customer sends a WhatsApp message to the business number.
+The work has two parts. The capture runs all the time. The sync runs once a day.
+
+**Capture (all the time):**
+
+1. A customer sends a WhatsApp message, or staff reply from the business phone.
 2. The Baileys worker gets the message through its open WebSocket connection.
-3. The worker finds the Salesforce Contact or Lead from the phone number.
-4. If there is no match, the worker makes a new Lead.
-5. The worker saves the message on the record.
+3. The worker saves the message in a local database on the host.
+
+**Daily sync (once a day):**
+
+1. The sync groups the saved messages by customer and by day.
+2. For each group, it searches Salesforce for the customer's phone number.
+3. If it finds a match, it links the group to the right Opportunity (see "Salesforce data model").
+4. It makes one Task for each customer and day, or updates that Task if it exists.
+5. If there is no match, the sync tries again on the next days.
+   After 7 days with no match, it stops and deletes the messages.
+6. The sync never makes new Leads.
+
+## Salesforce data model
+
+Each customer gets one **Task** for each day with WhatsApp messages.
+
+| Task field | Value |
+|------------|-------|
+| `Subject` | `WhatsApp: 27 Oct 2026 (5 messages)` |
+| `Description` | The transcript of that day, in time order, both directions |
+| `ActivityDate` | The day of the messages (UK time) |
+| `Status` | `Completed` |
+| `Type` | `WhatsApp` (a new picklist value) |
+| `WhoId` | The matched Contact (or Person Account contact) or Lead |
+| `WhatId` | The selected Opportunity. Empty if `WhoId` is a Lead. |
+| `WhatsApp_Sync_Key__c` | New field. Text, External ID, unique. Phone number and day, for example `+447700900123|2026-10-27`. |
+| `WhatsApp_Phone__c` | New field. Phone. The customer's number. |
+
+The sync key lets the sync update the same Task if it runs again for the same day.
+
+**Opportunity rule:**
+
+1. Use the open Opportunity for the customer.
+2. If there is no open Opportunity, use the most recent closed Opportunity.
+3. If there is no Opportunity, the Task links only to the person.
+
+Rules for Closed Lost Opportunities can come later.
+
+**Phone match:** Salesforce numbers start with `+44` (E.164 format). The worker
+also stores numbers in E.164 format. The search uses Salesforce SOSL on phone
+fields, which ignores spaces and other format differences.
 
 ## Architecture
 
@@ -21,13 +63,18 @@ WhatsApp Business app (phone)
         │  linked device (QR code)
         ▼
 Baileys worker  ── always-on Node.js process
-        │  Salesforce REST API
+        │  saves each message
         ▼
-Salesforce org
+Local database  ── holds messages until they sync, max 7 days
+        │  daily sync job
+        ▼
+Salesforce org  ── one Task for each customer and day
 ```
 
-The Baileys worker must run all the time. Vercel functions start and stop for
-each request, so they cannot keep the WhatsApp connection open. See
+The Baileys worker must run all the time, also with a daily sync. WhatsApp
+sends messages to a linked device only while it is connected, so the worker
+must be online to catch them. Vercel functions start and stop for each
+request, so they cannot keep the WhatsApp connection open. See
 [docs/decisions.md](docs/decisions.md).
 
 ## Plan
@@ -35,12 +82,12 @@ each request, so they cannot keep the WhatsApp connection open. See
 | Phase | Work | Status |
 |-------|------|--------|
 | 0 | Decide the scope and answer the open questions | In progress |
-| 1 | Connect Baileys to a test number and log incoming messages | Code done. Live test waits for the test number. |
-| 2 | Connect to a Salesforce sandbox and write test records | Not started |
-| 3 | Match phone numbers to Contacts and Leads | Not started |
-| 4 | Store the Baileys session safely and reconnect after a restart | Not started |
-| 5 | Deploy to an always-on host, with monitoring and alerts | Not started |
-| 6 | Go live with the business number | Not started |
+| 1 | Connect Baileys to a test number and log new messages | Code done. Live test waits for the test number. |
+| 2 | Save each message in a local database | Not started |
+| 3 | Add the Task fields and the `WhatsApp` Task type in the `danny3` sandbox | Not started |
+| 4 | Build the daily sync: phone match, Opportunity rule, Task upsert, 7-day retry | Not started |
+| 5 | Store the Baileys session safely, deploy to an always-on host, add monitoring and alerts | Not started |
+| 6 | Deploy the Salesforce changes to production and go live with the business number | Not started |
 
 ## Run it on your computer
 
@@ -83,11 +130,22 @@ occurs, because the Salesforce match needs the phone number.
 ## Open questions
 
 1. Which always-on host do we use (Railway, Render, Fly.io, or a VPS)?
-2. Do we sync only incoming messages, or must staff also reply from Salesforce?
-3. Do we sync all chats, or only chats with known customers? Are group chats in scope?
-4. Do we import old chats, or only new messages?
-5. Which Salesforce object stores a message: a Task, or a custom object?
-6. Which Salesforce objects link to a message: Contact, Lead, Account, Opportunity?
+2. Does the org use Person Accounts?
+3. If a customer has more than one open Opportunity, which one gets the Task?
+4. If a phone number matches more than one person, which one gets the Task?
+5. Who owns the Task: the Opportunity owner, the Contact or Lead owner, or an integration user?
+6. At what time does the daily sync run?
+7. Do we import old chats, or only new messages?
+
+Answered:
+
+- Staff replies: the sync includes messages that staff send from the business phone.
+  Replies from Salesforce are not in scope.
+- Group chats: not in scope.
+- Message record: a Task, one for each customer and day.
+- Links: the person and an Opportunity (see "Salesforce data model").
+- Sync timing: once a day. A more frequent sync can come later.
+- No match: no new Leads. Try again each day for 7 days, then stop.
 
 ## Environments
 
@@ -103,3 +161,5 @@ occurs, because the Salesforce match needs the phone number.
   Never commit them. Keep them in a secret store or an encrypted volume.
 - Keep Salesforce credentials in environment variables only.
 - Messages contain customer personal data. Do not log message text in production.
+- The local database holds messages for a maximum of 7 days. Delete each message
+  after it syncs, or after the last retry. Keep the database on an encrypted volume.
