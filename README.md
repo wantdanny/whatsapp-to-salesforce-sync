@@ -51,6 +51,14 @@ each request, so they cannot keep the WhatsApp connection open. See
 5. Which Salesforce object stores a message: a Task, or a custom object?
 6. Which Salesforce objects link to a message: Contact, Lead, Account, Opportunity?
 
+## Environments
+
+| Item | Value | Status |
+|------|-------|--------|
+| Salesforce sandbox | danny3 | Ready |
+| WhatsApp test number | - | Not yet. Needed before Phase 1 tests. |
+| Always-on host | - | Not chosen |
+
 ## Security
 
 - The Baileys session files give full access to the WhatsApp account.
