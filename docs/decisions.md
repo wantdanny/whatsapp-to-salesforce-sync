@@ -30,3 +30,14 @@ functions run for a short time and then stop. They cannot hold the connection.
 optional. We can use it later for a small status page or a Salesforce-facing API.
 
 **Still to decide:** the host (Railway, Render, Fly.io, or a VPS).
+
+## 2026-10-27: Phase 1 technical choices
+
+- **Language:** TypeScript on Node.js 20 or later.
+- **Baileys version:** pinned to `7.0.0-rc14`, with no automatic upgrades.
+  Baileys is unofficial, and a new version can change how it behaves. We upgrade by hand and test first.
+- **Session storage:** the Baileys file store (`useMultiFileAuthState`) for local tests.
+  Baileys says that this store is not for production. Phase 4 replaces it.
+- **Logs:** the message text is hidden by default, because it holds customer personal data.
+- **Messages in scope:** only new messages (`notify`). Status updates, broadcasts,
+  newsletters, reactions and system messages are ignored.
