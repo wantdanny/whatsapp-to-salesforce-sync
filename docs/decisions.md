@@ -56,7 +56,6 @@ optional. We can use it later for a small status page or a Salesforce-facing API
 - The Task `Description` holds the transcript of the day, in both directions.
 - A new unique External ID field, `WhatsApp_Sync_Key__c`, holds the phone number and the day.
   The sync uses it to update the Task if it already exists, not make a second one.
-- A Task that links to a Lead cannot link to an Opportunity. This is a Salesforce rule.
 
 **Trade-offs that we accept:**
 
@@ -94,3 +93,18 @@ sync tries again on each daily run. After 7 days, it stops and deletes those mes
 **Reason for the delete:** messages are personal data. We keep them only as long as we need them.
 
 This replaces "make a new Lead if there is no match" from the first plan.
+
+## 2026-10-27: Match on Person Accounts only
+
+**Facts from the business:**
+
+- All customers are Person Accounts. Leads convert to Person Accounts.
+- An org rule allows a maximum of one open Opportunity for each Person Account.
+
+**Decisions:**
+
+- The sync searches only Person Account phone fields. It does not search Leads.
+- `WhoId` is the `PersonContactId`. `WhatId` is the Opportunity, or the Person Account if there is no Opportunity.
+- The Task owner is the Opportunity owner. With no Opportunity, it is the Person Account owner.
+- The sync runs at 01:00 UK time (`Europe/London`) and covers the day before.
+- The sync takes only new messages. A history import can come later.

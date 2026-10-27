@@ -18,15 +18,20 @@ The work has two parts. The capture runs all the time. The sync runs once a day.
 
 **Daily sync (once a day):**
 
+The sync runs at 01:00 UK time and covers the day before.
+
 1. The sync groups the saved messages by customer and by day.
-2. For each group, it searches Salesforce for the customer's phone number.
+2. For each group, it searches the Person Accounts for the customer's phone number.
 3. If it finds a match, it links the group to the right Opportunity (see "Salesforce data model").
 4. It makes one Task for each customer and day, or updates that Task if it exists.
 5. If there is no match, the sync tries again on the next days.
    After 7 days with no match, it stops and deletes the messages.
-6. The sync never makes new Leads.
+6. The sync never makes new Leads or Accounts.
 
 ## Salesforce data model
+
+The org uses Person Accounts for all customers. Leads convert to Person
+Accounts, so the sync does not search or link Leads.
 
 Each customer gets one **Task** for each day with WhatsApp messages.
 
@@ -37,8 +42,9 @@ Each customer gets one **Task** for each day with WhatsApp messages.
 | `ActivityDate` | The day of the messages (UK time) |
 | `Status` | `Completed` |
 | `Type` | `WhatsApp` (a new picklist value) |
-| `WhoId` | The matched Contact (or Person Account contact) or Lead |
-| `WhatId` | The selected Opportunity. Empty if `WhoId` is a Lead. |
+| `WhoId` | The `PersonContactId` of the matched Person Account |
+| `WhatId` | The selected Opportunity, or the Person Account if there is no Opportunity |
+| `OwnerId` | The Opportunity owner, or the Person Account owner if there is no Opportunity |
 | `WhatsApp_Sync_Key__c` | New field. Text, External ID, unique. Phone number and day, for example `+447700900123|2026-10-27`. |
 | `WhatsApp_Phone__c` | New field. Phone. The customer's number. |
 
@@ -46,15 +52,16 @@ The sync key lets the sync update the same Task if it runs again for the same da
 
 **Opportunity rule:**
 
-1. Use the open Opportunity for the customer.
-2. If there is no open Opportunity, use the most recent closed Opportunity.
-3. If there is no Opportunity, the Task links only to the person.
+1. Use the open Opportunity on the Person Account. Org rules allow a maximum of one.
+2. If there is no open Opportunity, use the closed Opportunity with the latest `CloseDate`.
+3. If there is no Opportunity, link the Task to the Person Account only.
 
 Rules for Closed Lost Opportunities can come later.
 
 **Phone match:** Salesforce numbers start with `+44` (E.164 format). The worker
-also stores numbers in E.164 format. The search uses Salesforce SOSL on phone
-fields, which ignores spaces and other format differences.
+also stores numbers in E.164 format. The search uses Salesforce SOSL on the Person
+Account phone fields (`Phone`, `PersonMobilePhone`, `PersonHomePhone`,
+`PersonOtherPhone`). SOSL ignores spaces and other format differences.
 
 ## Architecture
 
@@ -130,22 +137,25 @@ occurs, because the Salesforce match needs the phone number.
 ## Open questions
 
 1. Which always-on host do we use (Railway, Render, Fly.io, or a VPS)?
-2. Does the org use Person Accounts?
-3. If a customer has more than one open Opportunity, which one gets the Task?
-4. If a phone number matches more than one person, which one gets the Task?
-5. Who owns the Task: the Opportunity owner, the Contact or Lead owner, or an integration user?
-6. At what time does the daily sync run?
-7. Do we import old chats, or only new messages?
+2. If a phone number matches more than one Person Account, which one gets the Task?
+   Proposal: the one with an open Opportunity, else the one modified most recently.
+   The sync logs each case for a person to review.
+3. Do we import old chats later? For now, the sync takes only new messages.
 
 Answered:
 
+- Customer records: Person Accounts only. No Leads.
+- Opportunity: a maximum of one open Opportunity for each Person Account (an org rule).
+- Task owner: the Opportunity owner.
+- Sync time: 01:00 UK time, for the day before.
+- History: new messages only, for now.
 - Staff replies: the sync includes messages that staff send from the business phone.
   Replies from Salesforce are not in scope.
 - Group chats: not in scope.
 - Message record: a Task, one for each customer and day.
-- Links: the person and an Opportunity (see "Salesforce data model").
+- Links: the Person Account and an Opportunity (see "Salesforce data model").
 - Sync timing: once a day. A more frequent sync can come later.
-- No match: no new Leads. Try again each day for 7 days, then stop.
+- No match: no new Leads or Accounts. Try again each day for 7 days, then stop.
 
 ## Environments
 
