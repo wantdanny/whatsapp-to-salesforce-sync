@@ -56,6 +56,10 @@ The sync key lets the sync update the same Task if it runs again for the same da
 2. If there is no open Opportunity, use the closed Opportunity with the latest `CloseDate`.
 3. If there is no Opportunity, link the Task to the Person Account only.
 
+**Duplicate rule:** If a number matches more than one Person Account, the sync
+uses the one with an open Opportunity. If none has an open Opportunity, it uses
+the one with the latest `LastModifiedDate`. The sync logs each case for a person to review.
+
 Rules for Closed Lost Opportunities can come later.
 
 **Phone match:** Salesforce numbers start with `+44` (E.164 format). The worker
@@ -137,14 +141,13 @@ occurs, because the Salesforce match needs the phone number.
 ## Open questions
 
 1. Which always-on host do we use (Railway, Render, Fly.io, or a VPS)?
-2. If a phone number matches more than one Person Account, which one gets the Task?
-   Proposal: the one with an open Opportunity, else the one modified most recently.
-   The sync logs each case for a person to review.
-3. Do we import old chats later? For now, the sync takes only new messages.
+2. Do we import old chats later? For now, the sync takes only new messages.
 
 Answered:
 
 - Customer records: Person Accounts only. No Leads.
+- More than one Person Account with the same number: use the one with an open
+  Opportunity, else the one modified most recently. Log each case for a person to review.
 - Opportunity: a maximum of one open Opportunity for each Person Account (an org rule).
 - Task owner: the Opportunity owner.
 - Sync time: 01:00 UK time, for the day before.

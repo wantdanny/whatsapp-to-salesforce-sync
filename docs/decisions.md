@@ -108,3 +108,6 @@ This replaces "make a new Lead if there is no match" from the first plan.
 - The Task owner is the Opportunity owner. With no Opportunity, it is the Person Account owner.
 - The sync runs at 01:00 UK time (`Europe/London`) and covers the day before.
 - The sync takes only new messages. A history import can come later.
+- If a number matches more than one Person Account, use the one with an open
+  Opportunity. If none has one, use the one with the latest `LastModifiedDate`.
+  Log each case for a person to review.
